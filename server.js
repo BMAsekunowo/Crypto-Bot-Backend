@@ -7,34 +7,47 @@ app.use(cors());
 app.use(express.json());
 
 // API Endpoint for Dex Screener
-const DEX_SCREENER_API = "https://api.dexscreener.com/token-profiles/latest/v1";
+const DEX_SCREENER_API = "https://api.dexscreener.com/latest/dex/tokens/solana";
 
-// Rug Threshold and Tier 1 Volume Threshold (for potential usage)
-const RUG_THRESHOLD = 0.5; // Adjust this based on requirements
-const TIER_1_VOLUME_THRESHOLD = 1000000; // Adjust this based on requirements
+// Rug Threshold and Tier 1 Volume Threshold
+const RUG_THRESHOLD = 0.00001; // Lowered rug threshold
+const TIER_1_VOLUME_THRESHOLD = 1000000;
 
-// Endpoint to fetch and filter tokens
+// ✅ Default route to confirm the server is running
+app.get("/", (req, res) => {
+  res.send("Crypto Bot Backend is Running!");
+});
+
+// ✅ Endpoint to fetch and filter tokens
 app.get("/api/coins", async (req, res) => {
   try {
     // Fetch token data from Dex Screener API
     const response = await axios.get(DEX_SCREENER_API);
 
-    // Debug: Log raw response
     console.log("Raw API Response:", response.data);
 
-    // Extract tokens
-    const allTokens = response.data || [];
-    console.log("Extracted Tokens:", allTokens);
+    // ✅ Ensure the API response contains `pairs` array
+    const allTokens = response.data.pairs || [];
 
-    // Modify filtering logic based on actual structure
-    const filteredTokens = allTokens.filter((token) => {
-      // Example: Only include tokens with chainId "ethereum" or "solana"
-      return token.chainId === "ethereum" || token.chainId === "solana";
-    });
+    console.log("Extracted Tokens:", allTokens.length);
 
-    console.log("Filtered Tokens:", filteredTokens);
+    // ✅ Filter tokens based on criteria
+    const filteredTokens = allTokens
+      .filter(token => token.priceUsd && token.baseToken)
+      .filter(token => parseFloat(token.priceUsd) >= RUG_THRESHOLD)
+      .map(token => ({
+        name: token.baseToken.name || "Unknown",
+        symbol: token.baseToken.symbol || "Unknown",
+        contractAddress: token.baseToken.address,
+        price: parseFloat(token.priceUsd).toFixed(6), // Fix NaN issues
+        volume: token.volume?.h24 ? token.volume.h24.toLocaleString() : "0",
+        marketCap: token.fdv || "N/A",
+        chainId: token.chainId,
+        url: `https://dexscreener.com/${token.chainId}/${token.baseToken.address}`
+      }));
 
-    // Respond with filtered tokens
+    console.log("Filtered Tokens:", filteredTokens.length);
+
     res.status(200).json(filteredTokens);
   } catch (error) {
     console.error("Error fetching tokens:", error.message);
@@ -42,7 +55,7 @@ app.get("/api/coins", async (req, res) => {
   }
 });
 
-// Endpoint to serve configuration (if needed)
+// ✅ Endpoint for configuration values
 app.get("/api/config", (req, res) => {
   res.json({
     rug_threshold: RUG_THRESHOLD,
@@ -50,8 +63,8 @@ app.get("/api/config", (req, res) => {
   });
 });
 
-// Start the server
-const PORT = 5001;
+// ✅ Use PORT for Render deployment
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
